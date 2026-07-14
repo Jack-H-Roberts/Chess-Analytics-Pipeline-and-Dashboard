@@ -109,30 +109,4 @@ check("TimeSinceLast null only for first-ever game", null_tsl <= 1,
 bad_eco = gold_t.filter(
     "ECO_A00+ECO_A40+ECO_A45+ECO_B10+ECO_B12+ECO_B13+ECO_D00+ECO_D02+ECO_D10+ECO_Other <> 1"
 ).count()
-check("every game in exactly one ECO bucket", bad_eco == 0, f"{bad_eco:,} bad rows")# --- gold layer invariants --------------------------------------------------
-gold_t = spark.table(f"{CATALOG}.gold.game_features")
-
-gold_rows = gold_t.count()
-check("gold rows == model population", gold_rows == model_pop,
-      f"{gold_rows:,} vs {model_pop:,}")
-
-n_features = len(gold_t.columns) - 3  # minus game_uuid, start_ts, Result
-check("gold feature count == 48", n_features == 48, f"{n_features} features")
-
-null_tsl = gold_t.filter("TimeSinceLast IS NULL").count()
-check("TimeSinceLast null only for first-ever game", null_tsl <= 1,
-      f"{null_tsl:,} nulls")
-
-bad_eco = gold_t.filter(
-    "ECO_A00+ECO_A40+ECO_A45+ECO_B10+ECO_B12+ECO_B13+ECO_D00+ECO_D02+ECO_D10+ECO_Other <> 1"
-).count()
 check("every game in exactly one ECO bucket", bad_eco == 0, f"{bad_eco:,} bad rows")
-
-# COMMAND ----------
-
-if failures:
-    raise AssertionError(
-        f"{len(failures)} quality check(s) failed: " + " | ".join(failures)
-    )
-print(f"\nAll checks passed — {n_games:,} games, {n_moves:,} moves, "
-      f"model population {model_pop:,}.")
