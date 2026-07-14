@@ -97,15 +97,15 @@ games_df = (
         F.when(tc.rlike(r"^[0-9]+$"), F.lit(0))
          .when(tc.rlike(r"^[0-9]+\+[0-9]+$"), F.split(tc, r"\+").getItem(1).cast("int"))
          .alias("increment_seconds"),
-        F.col("g.end_time").cast("timestamp").alias("end_ts"),   # epoch -> UTC
-        F.to_timestamp(
+        F.timestamp_seconds(F.col("g.end_time")).alias("end_ts"),  # epoch -> UTC
+        F.try_to_timestamp(
             F.concat_ws(
                 " ",
                 F.regexp_extract("g.pgn", r'\[UTCDate "([^"]+)"\]', 1),
                 F.regexp_extract("g.pgn", r'\[UTCTime "([^"]+)"\]', 1),
             ),
-            "yyyy.MM.dd HH:mm:ss",
-        ).alias("start_ts"),                                     # UTC
+            F.lit("yyyy.MM.dd HH:mm:ss"),
+        ).alias("start_ts"),  # UTC; NULL when a game has no PGN headers                                   # UTC
         F.when(is_white, F.lit("white")).otherwise(F.lit("black")).alias("color"),
         my["rating"].cast("int").alias("my_rating"),
         opp["rating"].cast("int").alias("opp_rating"),
