@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
+
+# Secrets / local config — never committed
+.env
+.databricks/
+
+# Data extracts and model outputs — reproducible, not source
+data/
+model/artifacts/
+gold_extract*.csv
