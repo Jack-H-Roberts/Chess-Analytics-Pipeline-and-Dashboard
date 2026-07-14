@@ -32,7 +32,7 @@ lakehouse monthly, ~45 minutes after the Lambda lands new data, with an email
 alert on failure that I have deliberately broken once to watch fire. The
 dashboard refreshes on its own schedule an hour after the job.
 
-## Ingestion — one idempotent sync, not a backfill script plus a cron
+## Ingestion
 
 Every Lambda invocation does the same thing: ask the API which monthly
 archives exist per account, list which `username=/year=/month=` partitions
@@ -54,10 +54,10 @@ the Chess.com API is unreachable from inside the platform. Two IAM roles with
 opposite one-way permissions connect the halves: the Lambda's role can write
 to the raw prefix but never read; the Unity Catalog storage credential can
 read but never write. The external location is marked read-only and file-event
-provisioning is declined — at four new files a month, directory listing is the
-right tool and event infrastructure would be resume-driven overengineering.
+provisioning is declined, which, at four new files a month, directory listing is 
+the right tool.
 
-## Medallion layers — each write strategy chosen for a reason
+## Bronze/Silver/Gold Data
 
 **Bronze** mirrors the source's shape: one row per landed snapshot file, the
 month's `games` array intact, with file path, modification time, and ingest
@@ -68,30 +68,27 @@ game per account-perspective — the composite key exists because my two
 accounts could in principle appear in the same game) and `silver.moves` (one
 row per half-move with clock times, standard chess only — variant movetext
 like bughouse piece-drops is a different grammar). The trailing-month re-pulls
-mean bronze genuinely contains duplicates (235 at first build), and **MERGE on
-the game uuid** is what collapses them — deduplication that is load-bearing,
-not decorative. Friend games, unrated games, and variants all stay in silver
-with flags; filtering is gold's job.
+mean bronze contains duplicates (235 at first build), so we need **MERGE on the 
+game uuid** to remove them. Friend games, unrated games, and variants all stay 
+in silver with flags due to their poor predictive power and deviance from my
+primary goal of improving my 10 minute, rated, rapid win rate.
 
 **Gold** holds the **48-feature table** for the model population (3,635 rated,
 standard-rules rapid games) plus the dashboard view. Feature rows are rapid
 games, but the *context* they carry — games already played, rolling
 win/draw/loss rates over 24 hours and 7 days, last two results, time since
 last game — is computed over my **entire activity timeline**: both accounts,
-every time class, rated or not. Twenty blitz losses before a rapid session are
-real fatigue; the 2024 pipeline was structurally blind to them. Every window
-looks strictly backward, so gold is a deterministic projection of silver and
-is rebuilt wholesale each run — MERGE belongs where duplicates occur, and
-they occur in silver.
+every time class, rated or not. The 2024 pipeline did not account for this. 
+Additionally, every window looks strictly backward, so gold is a deterministic 
+projection of silver and is rebuilt each run.
 
 **Checks** run as the job's final task: schema contracts on both silver
 tables, key uniqueness (the MERGE invariant), row-count floors,
 bronze-to-silver reconciliation, referential integrity between moves and
-games, and a mechanical assertion that **gold has exactly 48 features** — the
-number in my documentation is a constraint that fails the job if it drifts,
-not a hope. Delta enforces schema on every write underneath all of this.
+games, and the **48-feature gold** assertion to prevent down-stream errors.
+Delta enforces schema on every write.
 
-## Things the rebuild caught
+## Bugs
 
 Rebuilding forced every 2024 assumption through stricter machinery, and the
 machinery pushed back:
@@ -119,7 +116,7 @@ machinery pushed back:
   could have admitted ten-minute variants; the rebuild filters on the API's
   `rules` field instead.
 
-## The model — honest numbers, and why the ceiling is low
+## The Model
 
 `model/train_model.py` ports the 2024 design intact — XGBoost
 `multi:softprob`, Optuna search with 10-fold stratified CV, chronological
@@ -147,7 +144,7 @@ accounts' win rates are statistically indistinguishable (the account
 distinction is about ladders, not skill), and my small friend-game sample
 sits dead center of the non-friend error range.
 
-## Costs and honesty about scale
+## Costs and Scale
 
 The whole system costs pennies per month: a few megabytes of S3, ~18 seconds
 of Lambda per month, free-tier scheduling, and Databricks Free Edition. And
@@ -161,7 +158,7 @@ serving layer — is how I'd structure payments records, tax rolls, or any
 government-style dataset where auditability and literal correctness matter
 more than volume.
 
-## Repo layout
+## Repo Layout
 
 | Path | Contents |
 |---|---|
@@ -175,7 +172,7 @@ No secrets anywhere in this repo: AWS access is IAM-role-based on both sides,
 and the training script takes its Databricks credentials from environment
 variables.
 
-## Future work
+## Future Work
 
 Time-series cross-validation to replace the shuffled folds used during
 tuning; a calibrated or explicitly binary win model; adding the account flag
